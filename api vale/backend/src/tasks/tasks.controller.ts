@@ -1,212 +1,65 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
-  Body,
-  UseGuards,
-  Req,
-  ParseUUIDPipe,
+  Controller, Get, Patch, Param, Body,
+  ParseIntPipe, UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiBody,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
-import { Request } from 'express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
-import { CreateTaskDto, UpdateTaskDto } from './dto';
-import { JwtAuthGuard, RolesGuard } from '../auth/guards';
-import { GetUser, Roles } from '../auth/decorators';
-import { Role } from '../common/enums';
+import { UpdateTaskDto } from './dto/update-task.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Role } from '../common/enums/role.enum';
+import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 
 @ApiTags('Tareas')
 @ApiBearerAuth('JWT-Auth')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.USER)
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, RolesGuard) // Todas las rutas requieren autenticación
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
-  /**
-   * POST /tasks
-   * Crea una nueva tarea. El userId se toma del JWT automáticamente.
-   */
-  @Post()
-  @ApiOperation({
-    summary: 'Crear nueva tarea (Solo ADMIN)',
-    description:
-      'Crea una nueva tarea y la asigna al usuario autenticado. ' +
-      'El userId se obtiene automáticamente del token JWT (prevención de IDOR). ' +
-      'Solo el ADMIN puede crear y asignar tareas.',
-  })
-  @ApiBody({ type: CreateTaskDto })
-  @ApiResponse({
-    status: 201,
-    description: 'Tarea creada exitosamente',
-    schema: {
-      example: {
-        id: '550e8400-e29b-41d4-a716-446655440000',
-        title: 'Revisar documentación',
-        description: 'Revisar la documentación del proyecto antes del deploy',
-        status: 'PENDING',
-        userId: '660e8400-e29b-41d4-a716-446655440000',
-        createdAt: '2026-04-22T10:00:00.000Z',
-        updatedAt: '2026-04-22T10:00:00.000Z',
-      },
-    },
-  })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  create(
-    @Body() createTaskDto: CreateTaskDto,
-    @GetUser('userId') userId: string,
-    @GetUser('role') role: Role,
-  ) {
-    return this.tasksService.create(createTaskDto, userId, role);
-  }
-
-  /**
-   * GET /tasks
-   * Obtiene solo las tareas del usuario autenticado.
-   */
   @Get()
   @ApiOperation({
-    summary: 'Listar mis tareas',
-    description:
-      'Retorna únicamente las tareas asignadas al usuario autenticado. ' +
-      'ADMIN ve todas las tareas; USER ve solo las suyas.',
+    summary: 'Obtener mis tareas',
+    description: 'Solo USER. Devuelve ÚNICAMENTE las tareas del usuario autenticado. NUNCA tareas de otros usuarios.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Lista de tareas del usuario',
-    schema: {
-      example: [
-        {
-          id: '550e8400-e29b-41d4-a716-446655440000',
-          title: 'Configurar entorno',
-          description: 'Instalar dependencias del proyecto',
-          status: 'DONE',
-          userId: '660e8400-e29b-41d4-a716-446655440000',
-          createdAt: '2026-04-22T10:00:00.000Z',
-          updatedAt: '2026-04-22T10:00:00.000Z',
-        },
-      ],
-    },
-  })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  findAll(@GetUser('userId') userId: string) {
-    return this.tasksService.findAllByUser(userId);
+  @ApiResponse({ status: 200, description: 'Lista de tareas propias' })
+  @ApiResponse({ status: 401, description: 'Token inválido' })
+  @ApiResponse({ status: 403, description: 'Solo rol USER' })
+  findMyTasks(@CurrentUser() user: JwtPayload) {
+    return this.tasksService.findMyTasks(user);
   }
 
-  /**
-   * GET /tasks/all
-   * Obtiene todas las tareas del sistema (Solo ADMIN).
-   */
-  @Get('all')
-  @Roles(Role.ADMIN)
-  @ApiOperation({
-    summary: 'Listar todas las tareas (Solo ADMIN)',
-    description: 'Retorna todas las tareas de todos los usuarios registrados en el sistema.',
-  })
-  @ApiResponse({ status: 200, description: 'Lista de todas las tareas devuelta exitosamente.' })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado — Solo ADMIN' })
-  findAllAll() {
-    return this.tasksService.findAllAll();
-  }
-
-  /**
-   * GET /tasks/:id
-   * Obtiene una tarea con verificación de propiedad.
-   */
   @Get(':id')
   @ApiOperation({
-    summary: 'Obtener tarea por ID',
-    description:
-      'Retorna una tarea específica. ' +
-      'Verificación de propiedad: solo el dueño de la tarea o un ADMIN pueden acceder.',
+    summary: 'Obtener una tarea por ID',
+    description: 'Solo USER. 404 si no pertenece al usuario (no confirma existencia).',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'UUID de la tarea',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
-  @ApiResponse({ status: 200, description: 'Tarea encontrada' })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'No autorizado — La tarea no te pertenece' })
-  @ApiResponse({ status: 404, description: 'Tarea no encontrada' })
-  findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @GetUser('userId') userId: string,
-    @GetUser('role') userRole: Role,
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Datos de la tarea' })
+  @ApiResponse({ status: 404, description: 'No encontrada (o no pertenece al usuario)' })
+  findMyTaskById(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.tasksService.findOne(id, userId, userRole);
+    return this.tasksService.findMyTaskById(id, user);
   }
 
-  /**
-   * PATCH /tasks/:id
-   * Actualiza una tarea con verificación de propiedad.
-   */
   @Patch(':id')
   @ApiOperation({
-    summary: 'Actualizar tarea (Solo ADMIN)',
-    description:
-      'Actualiza los datos de una tarea existente (título, descripción, estado). ' +
-      'Verificación de propiedad: solo el dueño o un ADMIN pueden modificar.',
+    summary: 'Marcar tarea como completada/pendiente',
+    description: 'Solo USER. Solo actualiza el campo "completed". Anti-IDOR enforced.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'UUID de la tarea a actualizar',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
-  @ApiBody({ type: UpdateTaskDto })
-  @ApiResponse({ status: 200, description: 'Tarea actualizada exitosamente' })
-  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
-  @ApiResponse({ status: 404, description: 'Tarea no encontrada' })
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateTaskDto: UpdateTaskDto,
-    @GetUser('userId') userId: string,
-    @GetUser('role') userRole: Role,
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Tarea actualizada' })
+  @ApiResponse({ status: 404, description: 'No encontrada' })
+  updateMyTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTaskDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.tasksService.update(id, updateTaskDto, userId, userRole);
-  }
-
-  /**
-   * DELETE /tasks/:id
-   * Elimina una tarea con verificación de propiedad y registro en auditoría.
-   */
-  @Delete(':id')
-  @ApiOperation({
-    summary: 'Eliminar tarea (Solo ADMIN)',
-    description:
-      'Elimina una tarea permanentemente. ' +
-      'Solo el dueño o un ADMIN pueden eliminarla. ' +
-      'La acción queda registrada en el log de auditoría.',
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'UUID de la tarea a eliminar',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-  })
-  @ApiResponse({ status: 200, description: 'Tarea eliminada exitosamente' })
-  @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'No autorizado' })
-  @ApiResponse({ status: 404, description: 'Tarea no encontrada' })
-  remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @GetUser('userId') userId: string,
-    @GetUser('role') userRole: Role,
-    @Req() req: Request,
-  ) {
-    const ipAddress = req.ip || req.socket.remoteAddress || null;
-    return this.tasksService.remove(id, userId, userRole, ipAddress);
+    return this.tasksService.updateMyTask(id, dto, user);
   }
 }

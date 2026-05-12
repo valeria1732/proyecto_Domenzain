@@ -1,60 +1,94 @@
+import 'reflect-metadata';
 import { NestFactory, Reflector } from '@nestjs/core';
-import {
-  ValidationPipe,
-  ClassSerializerInterceptor,
-  Logger,
-} from '@nestjs/common';
+import { ValidationPipe, ClassSerializerInterceptor, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { appConfig } from './config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  // ========================================
-  // SEGURIDAD GLOBAL — ValidationPipe
-  // ========================================
-  // whitelist: elimina propiedades no definidas en el DTO (previene mass assignment)
-  // forbidNonWhitelisted: rechaza requests con propiedades extra (detección de ataques)
-  // transform: convierte payloads a las instancias DTO para type safety
+  // ============================================================
+  // SEGURIDAD HTTP — Helmet
+  // ============================================================
+  // Establece headers de seguridad HTTP estándar:
+  // - X-Content-Type-Options: nosniff
+  // - X-Frame-Options: SAMEORIGIN
+  // - Strict-Transport-Security
+  // - X-XSS-Protection
+  // - Content-Security-Policy (básico)
+  app.use(helmet());
+
+  // ============================================================
+  // CORS
+  // ============================================================
+  app.enableCors({
+    origin: appConfig.allowedOrigin,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
+
+  // ============================================================
+  // PREFIJO GLOBAL DE RUTAS
+  // ============================================================
+  // Todas las rutas quedan bajo /api/v1/...
+  app.setGlobalPrefix('api/v1');
+
+  // ============================================================
+  // VALIDACIÓN GLOBAL — ValidationPipe
+  // ============================================================
+  // whitelist: elimina campos no definidos en el DTO (previene mass assignment)
+  // forbidNonWhitelisted: rechaza requests con campos no permitidos
+  // transform: convierte los payloads a instancias DTO (type safety)
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
-  // ========================================
-  // SEGURIDAD GLOBAL — HttpExceptionFilter
-  // ========================================
-  // Captura todas las excepciones y devuelve respuestas genéricas.
-  // Los errores 500 NUNCA exponen stack traces ni mensajes de BD.
+  // ============================================================
+  // FILTRO GLOBAL DE EXCEPCIONES
+  // ============================================================
+  // Intercepta todas las excepciones y devuelve respuestas seguras:
+  // - Los errores 500 NUNCA exponen stack traces ni mensajes internos
+  // - Formato de respuesta consistente
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // ========================================
-  // SEGURIDAD GLOBAL — ClassSerializerInterceptor
-  // ========================================
-  // Aplica @Exclude() y @Expose() de class-transformer a todas las respuestas.
-  // Esto garantiza que campos como 'password' marcados con @Exclude()
-  // nunca se incluyan en las respuestas JSON.
-  app.useGlobalInterceptors(
-    new ClassSerializerInterceptor(app.get(Reflector)),
-  );
+  // ============================================================
+  // SERIALIZACIÓN GLOBAL
+  // ============================================================
+  // Aplica @Exclude() de class-transformer a todas las respuestas.
+  // Garantiza que campos sensibles nunca aparezcan en respuestas.
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // ========================================
+  // ============================================================
   // SWAGGER — Documentación de la API
-  // ========================================
-  const config = new DocumentBuilder()
-    .setTitle('API JABM')
+  // ============================================================
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('API Vale')
     .setDescription(
-      'API REST para gestión de tareas con autenticación JWT, RBAC y auditoría.\n\n' +
+      'API REST para gestión de tareas con autenticación JWT, RBAC y auditoría completa.\n\n' +
       '## Roles del Sistema\n\n' +
-      '**ADMIN** — Gestión completa: CRUD de usuarios, asignación/gestión de tareas y consulta de auditoría.\n\n' +
-      '**USER** — Consulta únicamente sus tareas asignadas.\n\n' +
+      '**ADMIN** — Gestión completa de usuarios (crear, editar, eliminar, cambiar rol). ' +
+      'Sin acceso a tareas de otros usuarios.\n\n' +
+      '**USER** — Consulta y gestión de sus propias tareas únicamente. ' +
+      'No puede acceder a tareas de otros usuarios.\n\n' +
       '## Autenticación\n\n' +
-      'Usa el botón **Authorize** e ingresa tu token JWT con el formato: `Bearer <tu_token>`',
+      'Usa el botón **Authorize** e ingresa tu token JWT con el formato: `Bearer <tu_token>`\n\n' +
+      '## Seguridad\n\n' +
+      '- Contraseñas hasheadas con **Argon2id**\n' +
+      '- JWT con expiración de **15 minutos**\n' +
+      '- Protección anti-IDOR en todas las consultas de tareas\n' +
+      '- Auditoría de todas las operaciones críticas',
     )
     .setVersion('1.0')
     .addBearerAuth(
@@ -63,47 +97,41 @@ async function bootstrap() {
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description: 'Ingresa tu token JWT',
+        description: 'Ingresa tu token JWT (sin el prefijo Bearer)',
         in: 'header',
       },
       'JWT-Auth',
     )
-    .addTag('Autenticación', 'Registro e inicio de sesión — Acceso público')
+    .addTag('Autenticación', 'Login, logout y perfil — Acceso público o con JWT')
     .addTag('Usuarios (Admin)', 'CRUD de usuarios — Solo ADMIN')
-    .addTag('Tareas', 'Gestión de tareas — ADMIN: CRUD completo | USER: Solo lectura de sus tareas')
-    .addTag('Auditoría (Admin)', 'Consulta de logs de seguridad — Solo ADMIN')
+    .addTag('Tareas', 'Consulta de tareas propias — Solo USER')
+    .addTag('Auditoría (Admin)', 'Logs de seguridad — Solo ADMIN')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document, {
-    customSiteTitle: 'API JABM — Documentación',
+    customSiteTitle: 'API Vale — Documentación',
     customCss: `
       .swagger-ui .topbar { background-color: #1a1a2e; }
-      .swagger-ui .topbar .download-url-wrapper .select-label { color: #e2e8f0; }
+      .swagger-ui .topbar-wrapper .link { display: none; }
     `,
     swaggerOptions: {
       persistAuthorization: true,
       docExpansion: 'list',
       filter: true,
       tagsSorter: 'alpha',
+      operationsSorter: 'alpha',
     },
   });
 
-  // ========================================
-  // CORS
-  // ========================================
-  app.enableCors({
-    origin: process.env.ALLOWED_ORIGIN || '*',
-  });
-
-  // ========================================
+  // ============================================================
   // INICIAR SERVIDOR
-  // ========================================
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  logger.log(`Servidor corriendo en: http://localhost:${port}`);
-  logger.log(`Swagger UI disponible en: http://localhost:${port}/api/docs`);
-  logger.log(`Entorno: ${process.env.NODE_ENV || 'development'}`);
+  // ============================================================
+  await app.listen(appConfig.port);
+  logger.log(`Servidor iniciado en:        http://localhost:${appConfig.port}`);
+  logger.log(`Swagger UI disponible en:   http://localhost:${appConfig.port}/api/docs`);
+  logger.log(`API base URL:               http://localhost:${appConfig.port}/api/v1`);
+  logger.log(`Entorno:                    ${appConfig.nodeEnv}`);
 }
 
 bootstrap();

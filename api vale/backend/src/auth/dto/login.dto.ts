@@ -1,28 +1,18 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-/**
- * DTO para login de usuario.
- * Se validan email y contraseña con restricciones básicas.
- */
 export class LoginDto {
-  @ApiProperty({
-    description: 'Correo electrónico del usuario',
-    example: 'admin@jabm.com',
-  })
-  @IsEmail({}, { message: 'El email debe tener un formato válido' })
-  @IsNotEmpty({ message: 'El email es obligatorio' })
-  email: string;
+  @ApiProperty({ example: 'juan.perez', description: 'Nombre de usuario' })
+  @IsString({ message: 'El nombre de usuario debe ser texto' })
+  @IsNotEmpty({ message: 'El nombre de usuario es requerido' })
+  @MinLength(3, { message: 'Mínimo 3 caracteres' })
+  @MaxLength(100, { message: 'Máximo 100 caracteres' })
+  username: string;
 
-  @ApiProperty({
-    description: 'Contraseña del usuario',
-    example: 'Admin123!',
-    minLength: 8,
-    maxLength: 50,
-  })
-  @IsString()
-  @IsNotEmpty({ message: 'La contraseña es obligatoria' })
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(50, { message: 'La contraseña debe tener máximo 50 caracteres' })
+  @ApiProperty({ example: 'MiPassword123!', description: 'Contraseña' })
+  @IsString({ message: 'La contraseña debe ser texto' })
+  @IsNotEmpty({ message: 'La contraseña es requerida' })
+  @MinLength(8, { message: 'Mínimo 8 caracteres' })
+  @MaxLength(72, { message: 'Máximo 72 caracteres' })
   password: string;
 }

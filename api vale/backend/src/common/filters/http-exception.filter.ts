@@ -8,16 +8,6 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
-/**
- * Filtro global de excepciones HTTP.
- *
- * Seguridad:
- * - Los errores 500 NUNCA exponen stack traces ni mensajes internos de BD
- *   al cliente. Esto previene la fuga de información de infraestructura
- *   que un atacante podría usar para diseñar ataques más dirigidos.
- * - Los errores conocidos (HttpException) sí devuelven su mensaje.
- * - Todos los errores se registran internamente con Logger para debugging.
- */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -27,35 +17,39 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    let status: number;
-    let message: string | object;
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    let message: string | string[] = 'Internal Server Error';
     if (exception instanceof HttpException) {
-      status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+        const responseObj = exceptionResponse as Record<string, unknown>;
+        message = (responseObj.message as string | string[]) || exception.message;
+      }
+    }
 
-      // Preservar mensajes de validación de class-validator
-      message =
-        typeof exceptionResponse === 'string'
-          ? exceptionResponse
-          : exceptionResponse;
-    } else {
-      // Error inesperado: NUNCA revelar detalles internos al cliente
-      status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Ha ocurrido un error interno en el servidor';
-
-      // Registrar el error real en logs del servidor para debugging
+    if (status >= 500) {
       this.logger.error(
-        `Error no controlado: ${exception instanceof Error ? exception.message : 'Unknown'}`,
-        exception instanceof Error ? exception.stack : undefined,
+        `[${request.method}] ${request.url} — ${status}`,
+        exception instanceof Error ? exception.stack : String(exception),
       );
+    } else {
+      this.logger.warn(`[${request.method}] ${request.url} — ${status}`);
     }
 
     response.status(status).json({
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
-      ...(typeof message === 'string' ? { message } : message),
+      message:
+        status >= 500
+          ? 'Ocurrió un error interno. Por favor intenta más tarde.'
+          : message,
     });
   }
 }

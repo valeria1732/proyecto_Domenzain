@@ -1,0 +1,93 @@
+// ============================================================
+// schema.prisma — api vale/backend
+// ORM: Prisma | DB: PostgreSQL
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------
+// Enum de roles del sistema
+// USER  → solo puede ver sus propias tareas
+// ADMIN → gestión de usuarios (sin acceso a tareas ajenas)
+// ------------------------------------------------------------------
+enum Role {
+  USER
+  ADMIN
+}
+
+// ------------------------------------------------------------------
+// Modelo: User
+// ------------------------------------------------------------------
+model User {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(200)
+  lastName  String    @db.VarChar(300)
+  username  String    @unique @db.VarChar(100)
+  password  String    @db.Text
+  role      Role      @default(USER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relaciones
+  tasks     Task[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+// ------------------------------------------------------------------
+// Modelo: Task
+// Las tareas se insertan directamente en la BD (no desde la API).
+// La API solo consulta y gestiona el estado (completed) de las tareas
+// que le pertenecen al usuario autenticado.
+// ------------------------------------------------------------------
+model Task {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(150)
+  description String   @db.Text
+  priority    Boolean  @default(false)
+  completed   Boolean  @default(false)
+  userId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relación con User
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tasks")
+}
+
+// ------------------------------------------------------------------
+// Modelo: AuditLog
+// Inmutable desde la perspectiva de la app (solo INSERT, nunca UPDATE/DELETE).
+// Registra: logins, logouts, CRUD de usuarios, cambios de rol.
+// userId puede ser null si el log se genera antes de autenticar
+// (ej. intento de login fallido).
+// ------------------------------------------------------------------
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String   @db.VarChar(100)   // LOGIN_SUCCESS, LOGIN_FAILED, USER_CREATED, etc.
+  entity    String   @db.VarChar(100)   // "User", "Task", "Auth"
+  entityId  Int?                        // ID de la entidad afectada (nullable)
+  userId    Int?                        // ID del usuario que realizó la acción (nullable)
+  username  String?  @db.VarChar(100)   // Username al momento del log (denormalizado)
+  ipAddress String?  @db.VarChar(45)    // IPv4 o IPv6
+  userAgent String?  @db.Text
+  details   String?  @db.Text           // JSON con detalles adicionales
+  createdAt DateTime @default(now())
+
+  // Relación con User (nullable — usar SetNull para no perder el log si se elimina el usuario)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

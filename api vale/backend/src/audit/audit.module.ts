@@ -1,13 +1,18 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuditController } from './audit.controller';
+import { JwtModule } from '@nestjs/jwt';
 import { AuditService } from './audit.service';
-import { AuditLog } from './entities/audit-log.entity';
+import { AuditController } from './audit.controller';
+import { appConfig } from '../config';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog])],
+  imports: [
+    JwtModule.register({
+      secret: appConfig.jwt.secret,
+      signOptions: { expiresIn: appConfig.jwt.expiresIn },
+    }),
+  ],
   controllers: [AuditController],
   providers: [AuditService],
-  exports: [AuditService], // Exportado para inyección en otros módulos
+  exports: [AuditService],
 })
 export class AuditModule {}
