@@ -1,17 +1,24 @@
 import api from './client';
 
-export function getAuditLogs(filters = {}) {
-  // Construir string de query params
-  const params = new URLSearchParams();
-  
-  if (filters.userId) params.append('userId', filters.userId);
-  if (filters.action) params.append('action', filters.action);
-  if (filters.severity) params.append('severity', filters.severity);
-  if (filters.startDate) params.append('startDate', filters.startDate);
-  if (filters.endDate) params.append('endDate', filters.endDate);
+/**
+ * Servicio de auditoría.
+ * Solo accesible por usuarios con rol ADMIN.
+ * Los registros son de solo lectura — el backend no expone
+ * endpoints de modificación o eliminación de logs.
+ */
 
-  const queryString = params.toString();
-  const url = queryString ? `/audit?${queryString}` : '/audit';
+/**
+ * Obtiene todos los registros de auditoría.
+ * El backend retorna los últimos 500 eventos ordenados por fecha descendente.
+ */
+export function getAuditLogs() {
+  return api.get('/audit');
+}
 
-  return api.get(url);
+/**
+ * Obtiene los registros de auditoría filtrados por usuario.
+ * @param {number} userId - ID del usuario a filtrar
+ */
+export function getAuditLogsByUser(userId) {
+  return api.get(`/audit/user/${userId}`);
 }

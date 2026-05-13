@@ -1,21 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { Users, CheckSquare, Target, Activity, Loader2 } from 'lucide-react';
-import { getDashboardStats } from '../../api/dashboard.service';
+import { Users, Activity, Loader2, Shield, UserPlus, LogIn } from 'lucide-react';
+import { getUsers } from '../../api/users.service';
+import { getAuditLogs } from '../../api/audit.service';
 
 export const Dashboard = () => {
   const [data, setData] = useState({
     totalUsers: 0,
-    activeTasks: 0,
-    completedTasks: 0,
-    alertsCount: 0
+    totalLogs: 0,
+    recentAlerts: []
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await getDashboardStats();
-        setData(response.data);
+        // Obtenemos usuarios y logs en paralelo
+        const [usersRes, logsRes] = await Promise.all([
+          getUsers(),
+          getAuditLogs()
+        ]);
+
+        const users = usersRes.data;
+        const logs = logsRes.data;
+
+        // Tomamos los 5 logs más recientes como "alertas"
+        const recentAlerts = logs.slice(0, 5).map(log => {
+          let color = 'var(--color-primary)';
+          let msg = `${log.action} - ${log.details}`;
+          if (log.severity === 'CRITICAL' || log.severity === 'HIGH') color = 'var(--color-danger)';
+          else if (log.severity === 'MEDIUM') color = 'var(--color-warning)';
+          else color = 'var(--color-success)';
+
+          return {
+            msg,
+            time: new Date(log.createdAt).toLocaleString(),
+            color
+          };
+        });
+
+        setData({
+          totalUsers: users.length,
+          totalLogs: logs.length,
+          recentAlerts
+        });
       } catch (error) {
         console.error('Error fetching dashboard stats:', error);
       } finally {
@@ -28,32 +55,18 @@ export const Dashboard = () => {
 
   const stats = [
     {
-      label: 'Usuarios Totales',
+      label: 'Usuarios Registrados',
       value: data.totalUsers,
       icon: Users,
       color: 'from-[var(--color-primary)] to-[var(--color-primary-light)]',
       shadow: 'shadow-indigo-500/50'
     },
     {
-      label: 'Tareas Activas',
-      value: data.activeTasks,
-      icon: Target,
+      label: 'Registros de Auditoría',
+      value: data.totalLogs,
+      icon: Shield,
       color: 'from-[var(--color-accent)] to-[var(--color-accent-light)]',
       shadow: 'shadow-cyan-500/50'
-    },
-    {
-      label: 'Completadas',
-      value: data.completedTasks,
-      icon: CheckSquare,
-      color: 'from-[var(--color-success)] to-[#34d399]',
-      shadow: 'shadow-emerald-500/50'
-    },
-    {
-      label: 'Alertas',
-      value: data.alertsCount,
-      icon: Activity,
-      color: 'from-[var(--color-warning)] to-[#fbbf24]',
-      shadow: 'shadow-amber-500/50'
     }
   ];
 
@@ -74,7 +87,7 @@ export const Dashboard = () => {
       </div>
 
       {/* Grid de Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
         {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -84,60 +97,40 @@ export const Dashboard = () => {
             >
               <div className="z-10">
                 <p className="text-sm font-medium text-[var(--color-light-400)] mb-1">{stat.label}</p>
-                <p className="text-3xl font-bold text-white">{stat.value}</p>
+                <p className="text-4xl font-bold text-white">{stat.value}</p>
               </div>
               <div className={`p-4 rounded-xl bg-gradient-to-br ${stat.color} ${stat.shadow} shadow-lg z-10 btn-glow`}>
-                <Icon className="w-6 h-6 text-white" />
+                <Icon className="w-8 h-8 text-white" />
               </div>
               
               {/* Decorative background blur */}
-              <div className={`absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br ${stat.color} rounded-full opacity-20 blur-2xl group-hover:opacity-40 transition-opacity duration-300`}></div>
+              <div className={`absolute -right-6 -top-6 w-32 h-32 bg-gradient-to-br ${stat.color} rounded-full opacity-20 blur-2xl group-hover:opacity-40 transition-opacity duration-300`}></div>
             </div>
           );
         })}
       </div>
 
-      {/* Secciones de Contenido (Gráficos/Tablas simuladas) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-        <div className="lg:col-span-2 glass p-6 rounded-2xl min-h-[300px] flex flex-col relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-32 bg-[var(--color-primary-light)] opacity-5 blur-[100px] rounded-full pointer-events-none"></div>
-             <h2 className="text-xl font-semibold text-white mb-4 z-10 flex items-center gap-2">
-               <Activity className="w-5 h-5 text-[var(--color-primary-light)]" />
-               Actividad Reciente
-             </h2>
-             <div className="flex-1 flex items-center justify-center border border-dashed border-[var(--color-dark-600)] rounded-xl z-10 bg-[var(--color-dark-800)]/30 backdrop-blur-sm">
-               <div className="text-center">
-                 <p className="text-[var(--color-light-400)] font-medium mb-2">Gráfico de actividad</p>
-                 <span className="text-xs px-2 py-1 rounded bg-[var(--color-dark-700)] text-[var(--color-light-300)]">Próximamente</span>
-               </div>
-             </div>
-        </div>
-        
+      {/* Secciones de Contenido (Actividad Reciente) */}
+      <div className="grid grid-cols-1 gap-6 mt-8">
         <div className="glass p-6 rounded-2xl min-h-[300px] flex flex-col relative overflow-hidden">
              <div className="absolute bottom-0 left-0 p-32 bg-[var(--color-secondary-light)] opacity-5 blur-[100px] rounded-full pointer-events-none"></div>
              <h2 className="text-xl font-semibold text-white mb-4 z-10 flex items-center gap-2">
                <Activity className="w-5 h-5 text-[var(--color-warning)]" />
-               Alertas del Sistema
+               Actividad Reciente en el Sistema (Auditoría)
              </h2>
              <div className="flex-1 space-y-3 z-10">
-               {[
-                 { msg: "Intento de acceso fallido", time: "Hace 10 min", color: "var(--color-warning)" },
-                 { msg: "Nueva tarea creada", time: "Hace 45 min", color: "var(--color-success)" },
-                 { msg: "Usuario baneado", time: "Hace 2 horas", color: "var(--color-danger)" }
-               ].map((alert, i) => (
-                 <div key={i} className="bg-[var(--color-dark-800)]/50 p-3 rounded-lg border border-[var(--color-dark-700)] flex items-center gap-3 hover:bg-[var(--color-dark-700)] hover:border-[var(--color-dark-600)] transition-all cursor-pointer group">
-                   <div className="w-2 h-2 rounded-full shadow-lg" style={{ backgroundColor: alert.color, boxShadow: `0 0 8px ${alert.color}` }}></div>
+               {data.recentAlerts.length > 0 ? data.recentAlerts.map((alert, i) => (
+                 <div key={i} className="bg-[var(--color-dark-800)]/50 p-4 rounded-lg border border-[var(--color-dark-700)] flex items-center gap-4 hover:bg-[var(--color-dark-700)] hover:border-[var(--color-dark-600)] transition-all cursor-pointer group">
+                   <div className="w-3 h-3 rounded-full shadow-lg shrink-0" style={{ backgroundColor: alert.color, boxShadow: `0 0 10px ${alert.color}` }}></div>
                    <div>
                      <p className="text-sm font-medium text-[var(--color-light-100)] group-hover:text-white transition-colors">{alert.msg}</p>
-                     <p className="text-xs text-[var(--color-light-400)] mt-0.5">{alert.time}</p>
+                     <p className="text-xs text-[var(--color-light-400)] mt-1">{alert.time}</p>
                    </div>
                  </div>
-               ))}
+               )) : (
+                 <p className="text-[var(--color-light-400)]">No hay actividad reciente.</p>
+               )}
              </div>
-             
-             <button className="mt-4 w-full py-2 rounded-lg bg-[var(--color-dark-700)] hover:bg-[var(--color-dark-600)] text-sm font-medium text-white transition-colors">
-               Ver todas las alertas
-             </button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, updateUserRole, deleteUser, updateUser, createUser } from '../../api/users.service';
-import { Loader2, Trash2, Edit2, Shield, ShieldAlert, User as UserIcon, Mail, Plus } from 'lucide-react';
+import { getUsers, updateUserRole, deleteUser, updateUser, createUser } from '../../api/users.service';
+import { Loader2, Trash2, Edit2, Shield, ShieldAlert, User as UserIcon, Plus, Info } from 'lucide-react';
 import { Button } from '../../components/ui';
 
 export const UsersManagement = () => {
@@ -11,7 +11,7 @@ export const UsersManagement = () => {
   // States for Edit/Create Modal
   const [modalMode, setModalMode] = useState(null); // 'edit' | 'create' | null
   const [editingUser, setEditingUser] = useState(null);
-  const [userForm, setUserForm] = useState({ name: '', email: '', password: '', role: 'USER' });
+  const [userForm, setUserForm] = useState({ name: '', lastName: '', username: '', password: '', role: 'USER' });
   const [formLoading, setFormLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -22,7 +22,7 @@ export const UsersManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await getAllUsers();
+      const res = await getUsers();
       setUsers(res.data);
       setError(null);
     } catch (err) {
@@ -39,7 +39,6 @@ export const UsersManagement = () => {
     
     try {
       await updateUserRole(user.id, newRole);
-      // Actualizamos localmente sin recargar todo
       setUsers(users.map(u => u.id === user.id ? { ...u, role: newRole } : u));
     } catch (err) {
       alert('Error cambiando el rol');
@@ -48,13 +47,13 @@ export const UsersManagement = () => {
   };
 
   const handleDelete = async (user) => {
-    if (!window.confirm(`¿Eliminar definitivamente a ${user.name}? Esta acción es irreversible.`)) return;
+    if (!window.confirm(`¿Eliminar definitivamente a ${user.username}? Esta acción es irreversible.`)) return;
 
     try {
       await deleteUser(user.id);
       setUsers(users.filter(u => u.id !== user.id));
     } catch (err) {
-      alert('Error al eliminar usuario');
+      alert('Error al eliminar usuario. Es posible que no se pueda eliminar si tiene registros asociados.');
       console.error(err);
     }
   };
@@ -62,35 +61,30 @@ export const UsersManagement = () => {
   const openCreateModal = () => {
     setModalMode('create');
     setEditingUser(null);
-    setUserForm({ name: '', email: '', password: '', role: 'USER' });
+    setUserForm({ name: '', lastName: '', username: '', password: '', role: 'USER' });
     setErrors({});
   };
 
   const openEditModal = (user) => {
     setModalMode('edit');
     setEditingUser(user);
-    setUserForm({ name: user.name, email: user.email, password: '', role: user.role });
+    // En edición, password se deja vacío y username es inmutable (lo mostramos bloqueado o no lo mandamos)
+    setUserForm({ name: user.name, lastName: user.lastName, username: user.username, password: '', role: user.role });
     setErrors({});
   };
 
   const validateForm = () => {
     const newErrors = {};
     if (!userForm.name.trim()) newErrors.name = 'El nombre es obligatorio.';
-    
-    if (!userForm.email.trim()) {
-      newErrors.email = 'El email es obligatorio.';
-    } else if (!userForm.email.includes('@')) {
-      newErrors.email = 'El email debe contener un "@".';
-    }
+    if (!userForm.lastName.trim()) newErrors.lastName = 'El apellido es obligatorio.';
+    if (!userForm.username.trim()) newErrors.username = 'El nombre de usuario es obligatorio.';
 
-    if (modalMode === 'create') {
-      if (!userForm.password) {
-        newErrors.password = 'La contraseña es obligatoria.';
-      } else {
-        if (userForm.password.length < 8) newErrors.password = 'Debe tener mínimo 8 caracteres.';
-        else if (!/[A-Z]/.test(userForm.password)) newErrors.password = 'Debe contener al menos una mayúscula.';
-        else if (!/[!@#$%^&*(),.?":{}|<>]/.test(userForm.password)) newErrors.password = 'Debe contener al menos un carácter especial.';
-      }
+    if (modalMode === 'create' || (modalMode === 'edit' && userForm.password)) {
+      if (userForm.password.length < 8) newErrors.password = 'Debe tener mínimo 8 caracteres.';
+      else if (!/[A-Z]/.test(userForm.password)) newErrors.password = 'Debe contener al menos una mayúscula.';
+      else if (!/[a-z]/.test(userForm.password)) newErrors.password = 'Debe contener al menos una minúscula.';
+      else if (!/\d/.test(userForm.password)) newErrors.password = 'Debe contener al menos un número.';
+      else if (!/[!@#$%^&*(),.?":{}|<>]/.test(userForm.password)) newErrors.password = 'Debe contener al menos un carácter especial.';
     }
     
     setErrors(newErrors);
@@ -104,15 +98,22 @@ export const UsersManagement = () => {
     try {
       setFormLoading(true);
       if (modalMode === 'edit') {
-        await updateUser(editingUser.id, { name: userForm.name, email: userForm.email });
-        setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userForm.name, email: userForm.email } : u));
+        const payload = { 
+          name: userForm.name, 
+          lastName: userForm.lastName 
+        };
+        if (userForm.password) payload.password = userForm.password;
+        
+        await updateUser(editingUser.id, payload);
+        
+        setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userForm.name, lastName: userForm.lastName } : u));
       } else {
         const res = await createUser(userForm);
         setUsers([...users, res.data]);
       }
       setModalMode(null);
     } catch (err) {
-      alert(`Error al ${modalMode === 'edit' ? 'editar' : 'crear'} usuario. Verifique los datos o si el email ya existe.`);
+      alert(err.response?.data?.message || `Error al ${modalMode === 'edit' ? 'editar' : 'crear'} usuario. Verifique los datos.`);
       console.error(err);
     } finally {
       setFormLoading(false);
@@ -153,8 +154,8 @@ export const UsersManagement = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-[var(--color-dark-800)]/80 text-[var(--color-light-400)] text-sm uppercase tracking-wider border-b border-[var(--color-dark-700)]">
-                  <th className="p-4 font-medium">Usuario</th>
-                  <th className="p-4 font-medium">Email</th>
+                  <th className="p-4 font-medium">Nombre Completo</th>
+                  <th className="p-4 font-medium">Usuario (Username)</th>
                   <th className="p-4 font-medium">Rol</th>
                   <th className="p-4 font-medium text-right">Acciones</th>
                 </tr>
@@ -164,15 +165,14 @@ export const UsersManagement = () => {
                   <tr key={user.id} className="hover:bg-[var(--color-dark-800)]/40 transition-colors group">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary-dark)] to-[var(--color-secondary)] flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary-dark)] to-[var(--color-secondary)] flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform shrink-0">
                           <UserIcon className="w-5 h-5 text-white" />
                         </div>
-                        <span className="font-medium text-[var(--color-light-100)]">{user.name}</span>
+                        <span className="font-medium text-[var(--color-light-100)]">{user.name} {user.lastName}</span>
                       </div>
                     </td>
-                    <td className="p-4 text-[var(--color-light-300)] flex items-center gap-2">
-                       <Mail className="w-4 h-4 text-[var(--color-light-500)]" />
-                       {user.email}
+                    <td className="p-4 text-[var(--color-light-300)] font-mono text-sm">
+                       @{user.username}
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
@@ -230,56 +230,75 @@ export const UsersManagement = () => {
       {/* Modal de Creación/Edición */}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="glass w-full max-w-md p-8 rounded-3xl relative border border-[var(--color-dark-600)] shadow-2xl">
+          <div className="glass w-full max-w-md p-8 rounded-3xl relative border border-[var(--color-dark-600)] shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-2xl font-bold text-white mb-6">
               {modalMode === 'edit' ? 'Editar Usuario' : 'Nuevo Usuario'}
             </h2>
             <form onSubmit={submitForm} className="space-y-4" noValidate>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Nombre</label>
+                  <input 
+                    type="text" 
+                    value={userForm.name}
+                    onChange={(e) => { setUserForm({...userForm, name: e.target.value}); setErrors({...errors, name: ''}); }}
+                    className={`w-full bg-[var(--color-dark-800)] border ${errors.name ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
+                  />
+                  {errors.name && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.name}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Apellido</label>
+                  <input 
+                    type="text" 
+                    value={userForm.lastName}
+                    onChange={(e) => { setUserForm({...userForm, lastName: e.target.value}); setErrors({...errors, lastName: ''}); }}
+                    className={`w-full bg-[var(--color-dark-800)] border ${errors.lastName ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
+                  />
+                  {errors.lastName && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.lastName}</p>}
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Nombre</label>
+                <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1 flex justify-between">
+                  Username
+                  {modalMode === 'edit' && <span className="text-[var(--color-warning)] text-xs"><Info className="inline w-3 h-3 mr-1"/>Inmutable</span>}
+                </label>
                 <input 
                   type="text" 
-                  value={userForm.name}
-                  onChange={(e) => { setUserForm({...userForm, name: e.target.value}); setErrors({...errors, name: ''}); }}
-                  className={`w-full bg-[var(--color-dark-800)] border ${errors.name ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
+                  value={userForm.username}
+                  onChange={(e) => { setUserForm({...userForm, username: e.target.value}); setErrors({...errors, username: ''}); }}
+                  disabled={modalMode === 'edit'}
+                  className={`w-full bg-[var(--color-dark-800)] border ${errors.username ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
                 />
-                {errors.name && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.name}</p>}
+                {errors.username && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.username}</p>}
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Email</label>
+                <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1 flex justify-between">
+                  Contraseña
+                  {modalMode === 'edit' && <span className="text-[var(--color-light-500)] text-xs">(Opcional) Dejar en blanco para mantener actual</span>}
+                </label>
                 <input 
-                  type="email" 
-                  value={userForm.email}
-                  onChange={(e) => { setUserForm({...userForm, email: e.target.value}); setErrors({...errors, email: ''}); }}
-                  className={`w-full bg-[var(--color-dark-800)] border ${errors.email ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
+                  type="password" 
+                  value={userForm.password}
+                  onChange={(e) => { setUserForm({...userForm, password: e.target.value}); setErrors({...errors, password: ''}); }}
+                  className={`w-full bg-[var(--color-dark-800)] border ${errors.password ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
                 />
-                {errors.email && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.email}</p>}
+                {errors.password && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.password}</p>}
               </div>
 
               {modalMode === 'create' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Contraseña</label>
-                    <input 
-                      type="password" 
-                      value={userForm.password}
-                      onChange={(e) => { setUserForm({...userForm, password: e.target.value}); setErrors({...errors, password: ''}); }}
-                      className={`w-full bg-[var(--color-dark-800)] border ${errors.password ? 'border-[var(--color-danger)] focus:ring-[var(--color-danger)]' : 'border-[var(--color-dark-600)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]'} rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-1 transition-all`}
-                    />
-                    {errors.password && <p className="text-[var(--color-danger)] text-xs mt-1 ml-1 animate-slide-down">{errors.password}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Rol</label>
-                    <select 
-                      value={userForm.role}
-                      onChange={(e) => setUserForm({...userForm, role: e.target.value})}
-                      className="w-full bg-[var(--color-dark-800)] border border-[var(--color-dark-600)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
-                    >
-                      <option value="USER">Usuario (USER)</option>
-                      <option value="ADMIN">Administrador (ADMIN)</option>
-                    </select>
-                  </div>
-                </>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--color-light-300)] mb-1">Rol</label>
+                  <select 
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({...userForm, role: e.target.value})}
+                    className="w-full bg-[var(--color-dark-800)] border border-[var(--color-dark-600)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                  >
+                    <option value="USER">Usuario Normal (USER)</option>
+                    <option value="ADMIN">Administrador (ADMIN)</option>
+                  </select>
+                </div>
               )}
               
               <div className="flex gap-3 mt-8 pt-4">

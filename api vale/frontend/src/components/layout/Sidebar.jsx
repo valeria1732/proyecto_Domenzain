@@ -1,11 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { ICONS } from '../../utils/icons';
+import { LayoutDashboard, Users, FileText, Shield, X } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { path: '/admin', label: 'Dashboard', icon: ICONS.dashboard, exact: true },
-  { path: '/admin/users', label: 'Usuarios', icon: ICONS.users },
-  { path: '/admin/tasks', label: 'Tareas', icon: ICONS.clipboardList },
-  { path: '/admin/audit', label: 'Auditoría', icon: ICONS.fileText },
+  { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { path: '/admin/users', label: 'Usuarios', icon: Users },
+  { path: '/admin/audit', label: 'Auditoría', icon: FileText },
 ];
 
 export default function Sidebar({ isOpen, toggleSidebar }) {
@@ -33,17 +32,19 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
             <div className="flex items-center gap-3">
               <div 
                 className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-lg shadow-primary/30"
-                dangerouslySetInnerHTML={{ __html: ICONS.shield }}
-              />
-              <span className="text-2xl font-bold tracking-tight text-white">JABM <span className="text-primary-light text-sm font-normal align-top">admin</span></span>
+              >
+                <Shield size={24} />
+              </div>
+              <span className="text-2xl font-bold tracking-tight text-white">VGCM <span className="text-primary-light text-sm font-normal align-top">admin</span></span>
             </div>
             
             {/* Botón cerrar solo en móviles */}
             <button 
               className="lg:hidden text-light-400 hover:text-white"
               onClick={toggleSidebar}
-              dangerouslySetInnerHTML={{ __html: ICONS.x }}
-            />
+            >
+              <X size={24} />
+            </button>
           </div>
 
           {/* Nav Links */}
@@ -62,20 +63,22 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
                   }
                 `}
               >
-                {({ isActive }) => (
-                  <>
-                    {/* Borde activo lateral */}
-                    {isActive && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-8 bg-primary rounded-r-md shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
-                    )}
+                {({ isActive }) => {
+                  const Icon = item.icon;
+                  return (
+                    <>
+                      {/* Borde activo lateral */}
+                      {isActive && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-8 bg-primary rounded-r-md shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
+                      )}
 
-                    <span 
-                      className={`transition-colors duration-300 ${isActive ? 'text-primary-light' : 'text-light-400 group-hover:text-primary-light'}`}
-                      dangerouslySetInnerHTML={{ __html: item.icon }} 
-                    />
-                    {item.label}
-                  </>
-                )}
+                      <span className={`transition-colors duration-300 ${isActive ? 'text-primary-light' : 'text-light-400 group-hover:text-primary-light'}`}>
+                        <Icon size={20} />
+                      </span>
+                      {item.label}
+                    </>
+                  );
+                }}
               </NavLink>
             ))}
           </nav>

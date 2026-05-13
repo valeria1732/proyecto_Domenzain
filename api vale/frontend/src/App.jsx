@@ -3,7 +3,7 @@ import { AuthProvider } from './context';
 import { Login } from './pages/auth';
 import { ProtectedRoute, AdminRoute } from './guards';
 import { AdminLayout } from './components/layout';
-import { Dashboard, UsersManagement, TasksManagement, AuditLogs } from './pages/admin';
+import { Dashboard, UsersManagement, AuditLogs } from './pages/admin';
 import { MyTasks } from './pages/user';
 
 function App() {
@@ -32,7 +32,7 @@ function App() {
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<Dashboard />} />
               <Route path="/admin/users" element={<UsersManagement />} />
-              <Route path="/admin/tasks" element={<TasksManagement />} />
+
               <Route path="/admin/audit" element={<AuditLogs />} />
             </Route>
           </Route>

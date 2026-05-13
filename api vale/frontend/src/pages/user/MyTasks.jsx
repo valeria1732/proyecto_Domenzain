@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getMyTasks } from '../../api/tasks.service';
-import { Loader2, Target, CheckSquare, Clock, LayoutDashboard } from 'lucide-react';
+import { getMyTasks, updateTaskStatus } from '../../api/tasks.service';
+import { Loader2, Target, CheckSquare, Clock, LayoutDashboard, CheckCircle, Circle } from 'lucide-react';
 import { useAuth } from '../../context';
 
 export const MyTasks = () => {
@@ -27,14 +27,23 @@ export const MyTasks = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch(status) {
-      case 'DONE':
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-[var(--color-success)]/10 text-[var(--color-success)] border border-[var(--color-success)]/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]"><CheckSquare className="w-4 h-4"/> Completada</span>;
-      case 'IN_PROGRESS':
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary-light)] border border-[var(--color-primary)]/20 shadow-[0_0_15px_rgba(99,102,241,0.15)]"><Target className="w-4 h-4"/> En Progreso</span>;
-      default:
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-[var(--color-warning)]/10 text-[#fbbf24] border border-[var(--color-warning)]/20 shadow-[0_0_15px_rgba(245,158,11,0.15)]"><Clock className="w-4 h-4"/> Pendiente</span>;
+  const toggleTaskCompletion = async (id, currentStatus) => {
+    try {
+      // Optimizacion UI (optimistic UI update)
+      setTasks(tasks.map(t => t.id === id ? { ...t, completed: !currentStatus } : t));
+      await updateTaskStatus(id, !currentStatus);
+    } catch (err) {
+      console.error(err);
+      // Revertir si falla
+      setTasks(tasks.map(t => t.id === id ? { ...t, completed: currentStatus } : t));
+    }
+  };
+
+  const getStatusBadge = (completed) => {
+    if (completed) {
+      return <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-[var(--color-success)]/10 text-[var(--color-success)] border border-[var(--color-success)]/20 shadow-[0_0_15px_rgba(16,185,129,0.15)]"><CheckSquare className="w-4 h-4"/> Completada</span>;
+    } else {
+      return <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-[var(--color-warning)]/10 text-[#fbbf24] border border-[var(--color-warning)]/20 shadow-[0_0_15px_rgba(245,158,11,0.15)]"><Clock className="w-4 h-4"/> Pendiente</span>;
     }
   };
 
@@ -76,7 +85,7 @@ export const MyTasks = () => {
                 <span className="text-xs text-[var(--color-light-400)] font-medium uppercase tracking-wider">Totales</span>
              </div>
              <div className="px-5 py-3 rounded-2xl bg-[var(--color-dark-800)] border border-[var(--color-success)]/20 flex flex-col items-center justify-center shadow-[inset_0_0_20px_rgba(16,185,129,0.05)]">
-                <span className="text-2xl font-black text-[var(--color-success)]">{tasks.filter(t => t.status==='DONE').length}</span>
+                <span className="text-2xl font-black text-[var(--color-success)]">{tasks.filter(t => t.completed).length}</span>
                 <span className="text-xs text-[var(--color-light-400)] font-medium uppercase tracking-wider">Listas</span>
              </div>
           </div>
@@ -89,25 +98,29 @@ export const MyTasks = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {tasks.map((task) => (
-              <div key={task.id} className="glass rounded-2xl p-6 border border-[var(--color-dark-700)] hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] transition-all duration-300 group flex flex-col h-full bg-gradient-to-b from-[var(--color-dark-800)]/40 to-transparent">
+              <div key={task.id} className={`glass rounded-2xl p-6 border transition-all duration-300 group flex flex-col h-full bg-gradient-to-b from-[var(--color-dark-800)]/40 to-transparent ${task.completed ? 'border-[var(--color-success)]/30 opacity-75' : 'border-[var(--color-dark-700)] hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]'}`}>
                 <div className="flex justify-between items-start mb-5">
-                  {getStatusBadge(task.status)}
-                  <div className="text-xs text-[var(--color-light-500)] bg-[var(--color-dark-800)] px-2 py-1 rounded-md border border-[var(--color-dark-700)]">
-                      {new Date(task.createdAt).toLocaleDateString()}
-                  </div>
+                  {getStatusBadge(task.completed)}
+                  <button 
+                    onClick={() => toggleTaskCompletion(task.id, task.completed)}
+                    className={`p-2 rounded-full transition-colors ${task.completed ? 'text-[var(--color-success)] bg-[var(--color-success)]/10 hover:bg-[var(--color-success)]/20' : 'text-[var(--color-light-500)] bg-[var(--color-dark-700)] hover:text-white hover:bg-[var(--color-dark-600)]'}`}
+                    title={task.completed ? "Marcar como pendiente" : "Marcar como completada"}
+                  >
+                    {task.completed ? <CheckCircle size={20} /> : <Circle size={20} />}
+                  </button>
                 </div>
                 
-                <h3 className="text-xl font-bold text-white mb-3 group-hover:text-[var(--color-primary-light)] transition-colors line-clamp-2">{task.title}</h3>
+                <h3 className={`text-xl font-bold mb-3 transition-colors line-clamp-2 ${task.completed ? 'text-[var(--color-light-500)] line-through' : 'text-white group-hover:text-[var(--color-primary-light)]'}`}>
+                  {task.name}
+                  {task.priority && !task.completed && <span className="ml-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 align-middle">PRIORIDAD</span>}
+                </h3>
                 <p className="text-[var(--color-light-300)] text-sm mb-6 flex-1 line-clamp-4 leading-relaxed">
                   {task.description || 'Esta tarea no tiene detalles adicionales proporcionados por el administrador.'}
                 </p>
                 
-                {/* Visual indicator bar at the bottom */}
                 <div className="w-full h-1.5 rounded-full bg-[var(--color-dark-700)] overflow-hidden">
                    <div className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                      task.status === 'DONE' ? 'w-full bg-[var(--color-success)]' :
-                      task.status === 'IN_PROGRESS' ? 'w-1/2 bg-[var(--color-primary)]' :
-                      'w-1/12 bg-[var(--color-warning)]'
+                      task.completed ? 'w-full bg-[var(--color-success)]' : 'w-1/12 bg-[var(--color-warning)]'
                    }`}></div>
                 </div>
               </div>
